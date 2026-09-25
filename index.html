@@ -316,7 +316,8 @@ table.tbl{width:100%;border-collapse:separate;border-spacing:0;font-size:13px}
 .toolbar .search{flex:1;min-width:200px;position:relative}
 .toolbar .search input{padding-left:36px}
 .toolbar .search::before{content:"⌕";position:absolute;left:13px;top:50%;transform:translateY(-52%);color:var(--muted);font-size:17px}
-.toolbar select{width:auto;min-width:150px}
+.toolbar select{width:auto;min-width:150px;max-width:100%}
+.toolbar .field select{width:100%}
 .empty{text-align:center;padding:34px 16px;color:var(--muted)}
 .empty .ei{font-size:30px;margin-bottom:6px;opacity:.85}
 .empty .et{color:var(--text);font-weight:650;font-size:14.5px;margin-bottom:4px}
@@ -535,6 +536,11 @@ table.tbl{width:100%;border-collapse:separate;border-spacing:0;font-size:13px}
   .toolbar select{flex:1}
 }
 @media (max-width:560px){
+  .topbar .title .sub{display:none}
+  .topbar .title h2{font-size:16px}
+  .btn{white-space:normal;text-align:center}
+  .toolbar .btn,.toolbar label.btn{flex:1 1 auto}
+  .toolbar select{width:100%;min-width:0}
   .brief{grid-template-columns:repeat(2,minmax(0,1fr))}
   .kpigroups{grid-template-columns:1fr}
   .kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
@@ -604,6 +610,7 @@ table.tbl{width:100%;border-collapse:separate;border-spacing:0;font-size:13px}
           <div class="gresults" id="gsResults"></div>
         </div>
         <div class="topactions">
+          <button class="iconbtn" data-act="transfer" id="saveBtn" title="Salvar / transferir dados">💾</button>
           <div class="lang" data-langswitch></div>
           <div class="userchip"><div class="avatar" id="userAvatar">ET</div><span class="nm" id="userName">admin</span></div>
           <button class="btn btn-ghost btn-sm" id="logoutBtn"><span>⎋</span><span class="btn-label" data-i18n="logout">Sair</span></button>
@@ -618,6 +625,7 @@ table.tbl{width:100%;border-collapse:separate;border-spacing:0;font-size:13px}
         <div class="panel" id="panel-viagens"></div>
         <div class="panel" id="panel-reservas"></div>
         <div class="panel" id="panel-cotacoes"></div>
+        <div class="panel" id="panel-central"></div>
         <div class="panel" id="panel-contratos"></div>
         <div class="panel" id="panel-financeiro"></div>
         <div class="panel" id="panel-hoteisParceiros"></div>
@@ -1127,7 +1135,7 @@ const VAL_EN = {
   'WhatsApp':'WhatsApp','Ligação':'Call','E-mail':'Email','Presencial':'In person','Instagram':'Instagram',
   'Econômico':'Budget','Intermediário':'Mid-range','Superior':'Upscale','Luxo':'Luxury',
   'Libras':'Libras','Intérprete':'Interpreter','Guia surdo':'Deaf guide','Legenda':'Captions','Acessibilidade física':'Physical accessibility','Acessibilidade comunicacional':'Communication accessibility','Audiodescrição':'Audio description',
-  'Sim':'Yes','Enviada':'Sent','Respondida':'Answered','Ônibus / fretamento':'Coach / charter','Van / transfer':'Van / transfer','Hotelaria / resort':'Hotels / resorts','Cruzeiro':'Cruise','Receptivo / passeios':'Ground handler / tours','Seguro viagem':'Travel insurance','Intérprete / guia':'Interpreter / guide','Não':'No','Em dia':'Complete','Pix':'Pix','Cartão':'Card','Boleto':'Bank slip','Dinheiro':'Cash','Transferência':'Transfer',
+  'Sim':'Yes','Transporte rodoviário':'Coach / road transport','Cruzeiro / barco':'Cruise / boat','Passeios e ingressos':'Tours & tickets','Alimentação':'Meals','Guia / intérprete':'Guide / interpreter','Enviada':'Sent','Respondida':'Answered','Ônibus / fretamento':'Coach / charter','Van / transfer':'Van / transfer','Hotelaria / resort':'Hotels / resorts','Cruzeiro':'Cruise','Receptivo / passeios':'Ground handler / tours','Seguro viagem':'Travel insurance','Intérprete / guia':'Interpreter / guide','Não':'No','Em dia':'Complete','Pix':'Pix','Cartão':'Card','Boleto':'Bank slip','Dinheiro':'Cash','Transferência':'Transfer',
 };
 const tv = v => (LANG==='en' && v && VAL_EN[v]) ? VAL_EN[v] : (v ?? '');
 
@@ -1202,6 +1210,19 @@ function showToast(msg){
   const t = $('#toast'); t.textContent = msg; t.classList.add('show');
   clearTimeout(showToast._tm); showToast._tm = setTimeout(()=>t.classList.remove('show'), 2600);
 }
+async function copyText(txt, msg){
+  try{ await navigator.clipboard.writeText(txt); showToast(msg || L('Copiado! Agora é só colar no WhatsApp.','Copied! Just paste it into WhatsApp.')); return true; }catch(e){}
+  try{
+    const ta = document.createElement('textarea');
+    ta.value = txt; ta.setAttribute('readonly',''); ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0';
+    document.body.appendChild(ta); ta.select(); ta.setSelectionRange(0, txt.length);
+    const ok = document.execCommand('copy'); ta.remove();
+    if(ok){ showToast(msg || L('Copiado! Agora é só colar no WhatsApp.','Copied! Just paste it into WhatsApp.')); return true; }
+  }catch(e){}
+  openModal(L('Copiar mensagem','Copy message'), `<p class="small muted">${L('Segure o texto abaixo, selecione tudo e copie.','Press and hold the text below, select all and copy.')}</p><textarea id="copyFallback" rows="14" style="width:100%">${esc(txt)}</textarea>`,
+    `<button class="btn btn-primary" onclick="document.getElementById('copyFallback').select();document.execCommand('copy');closeModal();showToast('${L('Copiado!','Copied!')}')">${L('Selecionar e copiar','Select and copy')}</button>`);
+  return false;
+}
 function downloadJSON(filename, obj){
   const blob = new Blob([JSON.stringify(obj, null, 2)], {type:'application/json'});
   const url = URL.createObjectURL(blob);
@@ -1275,6 +1296,8 @@ const ACC_OPTS = ['Libras','Intérprete','Guia surdo','Legenda','Acessibilidade 
 const PAY_OPTS = ['Pix','Cartão','Boleto','Transferência','Dinheiro'];
 const ATT_CATS = ['Contrato','Fotos','Tabela de preços','PDF','Documento'];
 
+const SETORES = ['Hospedagem','Transporte rodoviário','Cruzeiro / barco','Aéreo','Passeios e ingressos','Alimentação','Guia / intérprete','Seguro viagem','Outro'];
+const SETOR_ICON = {'Hospedagem':'🏨','Transporte rodoviário':'🚌','Cruzeiro / barco':'🚢','Aéreo':'✈️','Passeios e ingressos':'📍','Alimentação':'🍽️','Guia / intérprete':'🤟','Seguro viagem':'🛡️','Outro':'📦'};
 const STATUS_COLOR = {
   'Lead':'blue','Cliente':'teal','Cliente recorrente':'green','VIP':'violet','Inativo':'gray',
   'Planejamento':'gray','Cotação':'blue','Confirmada':'green','Em preparação':'violet','Em andamento':'teal','Finalizada':'gray','Cancelada':'red',
@@ -1531,6 +1554,7 @@ const SCHEMAS = {
     pt:'Solicitações de cotação', en:'Quote requests', one:['solicitação','request'], icon:'📨', tab:'modelos',
     fields:[
       F('fornecedor','Empresa','Supplier','party',{required:true}),
+      F('setor','Setor','Sector','select',{options:SETORES, def:'Outro', required:true}),
       F('modelo','Modelo usado','Template','select',{options:['Ônibus','Cruzeiro MSC (briefing)','Cruzeiro em grupo','Hospedagem em grupo','Passeio / receptivo','Transfer / van','Aéreo em grupo','Outro'], def:'Outro'}),
       F('resumo','Resumo','Summary','text',{required:true, full:true}),
       F('status','Status','Status','select',{options:['Enviada','Respondida','Aprovada','Recusada'], def:'Enviada'}),
@@ -2348,7 +2372,7 @@ const ENTITY_VIEWS = {
       <div class="dsec"><div class="accbox"><div class="h">♿ ${L('Acessibilidade na viagem','Accessibility on this trip')}</div><div class="tags">${(t.acessibilidade||[]).length?(t.acessibilidade||[]).map(a=>`<span class="tag ok">✓ ${esc(tv(a))}</span>`).join(''):`<span class="muted small">${L('Nenhum recurso marcado.','No resources selected.')}</span>`}</div><div class="team">🤟 ${TEAM_ACC()}</div></div></div>`;
     },
     skipKV:['hotelId','transporteId','cruzeiroId','passeios','acessibilidade','localEmbarque','horaSaida','status'],
-    detailActions:t=>`<button class="btn btn-ghost" data-new='reservas|${esc(JSON.stringify({viagemId:t.id}))}'>+ ${L('Passageiro','Passenger')}</button>
+    detailActions:t=>`<button class="btn btn-primary" data-act="copyTrip" data-id="${t.id}">📋 ${L('Copiar roteiro para o WhatsApp','Copy itinerary for WhatsApp')}</button><button class="btn btn-ghost" data-new='reservas|${esc(JSON.stringify({viagemId:t.id}))}'>+ ${L('Passageiro','Passenger')}</button>
       <button class="btn btn-ghost" data-new='financeiro|${esc(JSON.stringify({tipo:'Despesa', viagemId:t.id}))}'>+ ${L('Despesa','Expense')}</button>
       <button class="btn btn-ghost" data-act="dupTrip" data-id="${t.id}">⧉ ${L('Duplicar','Duplicate')}</button>`,
   },
@@ -2401,7 +2425,7 @@ const ENTITY_VIEWS = {
       {l:L('Valor','Amount'), r:q=>`<span class="num">${money(parseMoney(q.valor))}</span>`, s:q=>parseMoney(q.valor)},
       {l:'Status', r:q=>pill(q.status), s:q=>q.status},
     ],
-    detailActions:q=>`${OPEN_QUOTE.includes(q.status)?`<button class="btn btn-ghost" data-act="approveQuote" data-id="${q.id}">✓ ${L('Aprovar e criar reserva','Approve & create booking')}</button><button class="btn btn-ghost" data-act="setStatus" data-ref="cotacoes:${q.id}" data-val="Recusada">✕ ${L('Recusada','Declined')}</button>`:''}${(()=>{ const c = getRec('clientes', q.clienteId); return c&&c.telefone?`<a class="btn btn-ghost" target="_blank" rel="noopener" href="${waLink(c.telefone, quoteMessage(q))}">💬 ${L('Enviar','Send')}</a>`:''; })()}`,
+    detailActions:q=>`<button class="btn btn-primary" data-act="copyQuote" data-id="${q.id}">📋 ${L('Copiar para o WhatsApp','Copy for WhatsApp')}</button>${OPEN_QUOTE.includes(q.status)?`<button class="btn btn-ghost" data-act="approveQuote" data-id="${q.id}">✓ ${L('Aprovar e criar reserva','Approve & create booking')}</button><button class="btn btn-ghost" data-act="setStatus" data-ref="cotacoes:${q.id}" data-val="Recusada">✕ ${L('Recusada','Declined')}</button>`:''}${(()=>{ const c = getRec('clientes', q.clienteId); return c&&c.telefone?`<a class="btn btn-ghost" target="_blank" rel="noopener" href="${waLink(c.telefone, quoteMessage(q))}">💬 ${L('Enviar','Send')}</a>`:''; })()}`,
   },
 
   /* ---------------- CONTRATOS ---------------- */
@@ -2579,6 +2603,7 @@ ENTITY_VIEWS.solicitacoes = {
   emptyText:()=>L('Use um modelo acima, envie para a empresa e registre aqui para acompanhar a resposta.','Use a template above, send it and log it here to track the reply.'),
   defaultSort:(a,b)=>(b.dataEnvio||'').localeCompare(a.dataEnvio||''),
   columns:()=>[
+    {l:L('Setor','Sector'), r:q=>`${SETOR_ICON[q.setor||'Outro']||''} ${esc(tv(q.setor||'Outro'))}`, s:q=>q.setor||''},
     {l:L('Empresa','Supplier'), strong:true, r:q=>`${esc(q.fornecedor)}<span class="sub">${esc(tv(q.modelo||''))}</span>`, s:q=>q.fornecedor||''},
     {l:L('Resumo','Summary'), r:q=>esc(q.resumo)},
     {l:L('Envio','Sent'), r:q=>fmtDate(q.dataEnvio), s:q=>q.dataEnvio||''},
@@ -2586,7 +2611,7 @@ ENTITY_VIEWS.solicitacoes = {
     {l:L('Valor recebido','Quoted'), r:q=>q.valorResposta!==''&&q.valorResposta!=null?`<span class="num">${money(parseMoney(q.valorResposta))}</span>`:'', s:q=>parseMoney(q.valorResposta)},
     {l:'Status', r:q=>pill(q.status), s:q=>q.status},
   ],
-  detailActions:q=>`${q.status==='Enviada'?`<button class="btn btn-ghost" data-act="setStatus" data-ref="solicitacoes:${q.id}" data-val="Respondida">✓ ${L('Respondida','Answered')}</button>`:''}${q.status==='Respondida'?`<button class="btn btn-ghost" data-act="setStatus" data-ref="solicitacoes:${q.id}" data-val="Aprovada">★ ${L('Aprovar','Approve')}</button>`:''}`,
+  detailActions:q=>`<button class="btn btn-primary" data-act="copyReq" data-id="${q.id}">📋 ${L('Copiar para o WhatsApp','Copy for WhatsApp')}</button><button class="btn btn-ghost" data-act="waReq" data-id="${q.id}">💬 ${L('Abrir WhatsApp','Open WhatsApp')}</button>${q.status==='Enviada'?`<button class="btn btn-ghost" data-act="setStatus" data-ref="solicitacoes:${q.id}" data-val="Respondida">✓ ${L('Respondida','Answered')}</button>`:''}${q.status!=='Aprovada'?`<button class="btn btn-ghost" data-act="pickReq" data-id="${q.id}">★ ${L('Escolher esta','Choose this')}</button>`:`<button class="btn btn-ghost" data-act="reqToExpense" data-id="${q.id}">💰 ${L('Lançar despesa','Add expense')}</button>`}`,
 };
 function contactButtons(r){
   const tel = String(r.telefone||'').split('/')[0].replace(/[^\d+]/g,'');
@@ -2661,6 +2686,20 @@ const ENTITY_HOOKS = {
 
 /* ---------- ações ---------- */
 const ACTIONS = {
+  copyQuote: el=>{ const q = getRec('cotacoes', el.dataset.id); if(q) copyText(quoteMessage(q)); },
+  copyTrip: el=>{
+    const t = getRec('viagens', el.dataset.id); if(!t) return;
+    const st = tripStats(t);
+    const txt = [`🧳 *${t.nome}*`, `📍 ${t.destino||''}`, `🗓 ${fmtDate(t.dataSaida)}${t.dataRetorno?' → '+fmtDate(t.dataRetorno):''}`,
+      t.localEmbarque?`🧭 ${L('Embarque','Boarding')}: ${t.localEmbarque}${t.horaSaida?' · '+t.horaSaida:''}`:'',
+      st.pax?`👥 ${st.pax} ${L('passageiros','passengers')}`:'',
+      t.hotelId?`🏨 ${relName('hospedagem', t.hotelId)}`:'', t.transporteId?`🚌 ${relName('transportes', t.transporteId)}`:'',
+      (t.passeios||[]).length?`📍 ${(t.passeios||[]).map(id=>relName('lugares',id)).filter(Boolean).join(', ')}`:'',
+      parseMoney(t.valorPorPessoa)?`💵 ${money(parseMoney(t.valorPorPessoa))} ${L('por pessoa','per person')}`:'',
+      (t.acessibilidade||[]).length?`🤟 ${t.acessibilidade.map(tv).join(', ')}`:'',
+      '', t.observacoes||'', '', SIGN[LANG==='en'?'en':'pt']].filter(x=>x!=='').join('\n');
+    copyText(txt);
+  },
   setStatus: el=>{ const [k,id] = el.dataset.ref.split(':'); setField(k, id, 'status', el.dataset.val); },
   setField: el=>{ const [k,id] = el.dataset.ref.split(':'); setField(k, id, el.dataset.field, el.dataset.val); },
   docsOk: el=>setField('reservas', el.dataset.id, 'documentacao', 'Em dia'),
@@ -3818,9 +3857,11 @@ function renderModelos(){
   if(t.iframe){
     area.innerHTML = `<div class="card"><div class="cardhead"><h3>${t.icon} ${esc(L(t.pt,t.en))}</h3><span class="hint">${L('Preencha, clique em "Gerar resumo" e envie pelo próprio formulário. Depois registre a solicitação aqui.','Fill in, click "Gerar resumo" and send from the form itself. Then log the request here.')}</span></div>
       <iframe id="mFrame" title="${esc(L(t.pt,t.en))}" style="width:100%;height:78vh;border:1px solid var(--border);border-radius:12px;background:#fff"></iframe>
-      <div class="formgrid" style="margin-top:14px">${recSel}<div class="field"><label>&nbsp;</label><button class="btn btn-primary" id="mLogFrame">📨 ${L('Registrar solicitação enviada','Log sent request')}</button></div></div></div>`;
+      <div class="formgrid" style="margin-top:14px">${recSel}<div class="field"><label>&nbsp;</label><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-primary" id="mCopyFrame">📋 ${L('Copiar para o WhatsApp','Copy for WhatsApp')}</button><button class="btn btn-ghost" id="mLogFrame">📨 ${L('Registrar solicitação','Log request')}</button></div></div></div></div>`;
     $('#mFrame').srcdoc = tplDecode(t.iframe);
     const msc = loadDB('fornecedores').find(f=>/^MSC/i.test(f.nome)); if(msc && !MODEL_UI.to){ $('#mRec').value = `fornecedores:${msc.id}`; }
+    const frameText = () => { try{ return ($('#mFrame').contentDocument.getElementById('preview')||{}).textContent || ''; }catch(e){ return ''; } };
+    $('#mCopyFrame').onclick = ()=>{ const t2 = frameText(); if(!t2.trim()){ showToast(L('Clique em "Gerar resumo" no formulário antes de copiar.','Click "Gerar resumo" in the form first.')); return; } copyText(t2); };
     $('#mLogFrame').onclick = ()=>{
       let txt = ''; let cli = '';
       try{ const doc = $('#mFrame').contentDocument; txt = (doc.getElementById('preview')||{}).textContent || ''; cli = (doc.getElementById('cliente')||{}).value || ''; }catch(e){}
@@ -3837,9 +3878,9 @@ function renderModelos(){
       ${t.client ? '' : recSel}
       <div class="previewBox" id="mPreview"></div>
       <div class="toolbar" style="margin:14px 0 0">
-        <button class="btn btn-primary" id="mWa">💬 WhatsApp</button>
+        <button class="btn btn-primary" id="mCopy">📋 ${L('Copiar para o WhatsApp','Copy for WhatsApp')}</button>
+        <button class="btn btn-ghost" id="mWa">💬 ${L('Abrir WhatsApp','Open WhatsApp')}</button>
         <button class="btn btn-ghost" id="mMail">✉️ E-mail</button>
-        <button class="btn btn-ghost" id="mCopy">⧉ ${L('Copiar','Copy')}</button>
         <button class="btn btn-ghost" id="mSave">${t.client ? '💾 '+L('Salvar como cotação','Save as quote') : '📨 '+L('Registrar solicitação','Log request')}</button>
         <button class="btn btn-quiet" id="mClear">${L('Limpar','Clear')}</button>
       </div></div></div>`;
@@ -3860,7 +3901,7 @@ function renderModelos(){
   const contact = () => { if(t.client){ const c = getRec('clientes', d.clienteId); return c ? {whatsapp:c.telefone, email:c.email} : {}; } const rr = recipientRec(MODEL_UI.to); return rr ? rr.r : {}; };
   $('#mWa').onclick = ()=>{ const c = contact(); const num = [c.whatsapp, c.telefone].find(x=>x && !/^0800/.test(String(x).replace(/\D/g,''))) || ''; window.open(waLink(String(num).split('/')[0], buildMessage(t, d)), '_blank'); };
   $('#mMail').onclick = ()=>{ const c = contact(); location.href = `mailto:${encodeURIComponent(c.email||'')}?subject=${encodeURIComponent((t.client?L('Proposta','Proposal'):L('Solicitação de cotação','Quote request'))+' — Eyeth Tour Brazil')}&body=${encodeURIComponent(buildMessage(t, d).replace(/\*/g,''))}`; };
-  $('#mCopy').onclick = async ()=>{ try{ await navigator.clipboard.writeText(buildMessage(t, d)); showToast(L('Mensagem copiada!','Message copied!')); }catch(e){ alert(L('Selecione o texto e copie manualmente.','Select the text and copy it manually.')); } };
+  $('#mCopy').onclick = ()=>copyText(buildMessage(t, d));
   $('#mClear').onclick = ()=>{ MODEL_UI.values[t.id] = {}; renderModelos(); };
   $('#mSave').onclick = ()=>{
     if(t.client){
@@ -3874,7 +3915,7 @@ function renderModelos(){
 function logRequest(t, msg, resumo){
   const rr = recipientRec(MODEL_UI.to || ($('#mRec')||{}).value);
   if(!rr){ showToast(L('Escolha para qual empresa a mensagem foi enviada.','Pick which company you sent it to.')); return; }
-  openForm('solicitacoes', null, {fornecedor: rr.r.nome || rr.r.empresa || recName(rr.k, rr.r), modelo:t.modelo||'Outro', resumo, mensagem:msg, status:'Enviada'});
+  openForm('solicitacoes', null, {fornecedor: rr.r.nome || rr.r.empresa || recName(rr.k, rr.r), modelo:t.modelo||'Outro', setor: MODEL_UI.setor || SETOR_BY_TPL[t.id] || 'Outro', viagemId: MODEL_UI.viagemId || '', resumo, mensagem:msg, status:'Enviada'});
 }
 ACTIONS.quoteTo = el=>{
   const [k,id] = el.dataset.ref.split(':'); const r = getRec(k, id); if(!r) return;
@@ -3957,6 +3998,178 @@ ACTIONS.genContract = el=>{
 };
 
 /* ============================================================
+   CENTRAL DE COTAÇÕES — uma viagem, vários setores
+============================================================ */
+const CENTRAL = {viagemId:'', sel:''};
+const TPL_BY_SETOR = {'Hospedagem':'hospedagem','Transporte rodoviário':'transfer','Cruzeiro / barco':'cruzeiro','Aéreo':'aereo','Passeios e ingressos':'passeio','Alimentação':'passeio','Guia / intérprete':'passeio','Seguro viagem':'passeio','Outro':'passeio'};
+const SETOR_BY_TPL = {hospedagem:'Hospedagem', onibus:'Transporte rodoviário', transfer:'Transporte rodoviário', cruzeiro:'Cruzeiro / barco', msc:'Cruzeiro / barco', aereo:'Aéreo', passeio:'Passeios e ingressos'};
+const reqOf = (viagemId) => loadDB('solicitacoes').filter(q => (viagemId ? q.viagemId===viagemId : !q.viagemId));
+const reqValue = q => parseMoney(q.valorResposta);
+
+function renderCentral(){
+  const el = $('#panel-central');
+  const trips = loadDB('viagens').filter(t=>t.status!=='Cancelada');
+  if(!CENTRAL.viagemId && trips.length) CENTRAL.viagemId = trips[0].id;
+  const trip = getRec('viagens', CENTRAL.viagemId);
+  const reqs = reqOf(CENTRAL.viagemId);
+  const pax = trip ? (tripStats(trip).pax || +trip.pax || 0) : 0;
+  const aprovadas = reqs.filter(q=>q.status==='Aprovada');
+  const totalAprovado = aprovadas.reduce((s,q)=>s+reqValue(q),0);
+  const aguardando = reqs.filter(q=>q.status==='Enviada');
+  const setoresComCotacao = new Set(reqs.map(q=>q.setor||'Outro')).size;
+
+  el.innerHTML = `
+  <div class="card" style="margin-bottom:16px"><div class="toolbar" style="margin:0">
+    <div class="field" style="margin:0;flex:1 1 220px;min-width:0;max-width:100%"><label>${L('Viagem','Trip')}</label>
+      <select id="cenTrip"><option value="">${L('— cotações sem viagem —','— quotes without a trip —')}</option>${trips.map(t=>`<option value="${t.id}" ${CENTRAL.viagemId===t.id?'selected':''}>${esc(t.nome)}${t.dataSaida?' · '+fmtDate(t.dataSaida):''}</option>`).join('')}</select></div>
+    ${trip?`<button class="btn btn-ghost" data-open="viagens:${trip.id}">🧳 ${L('Abrir viagem','Open trip')}</button>`:''}
+    <button class="btn btn-ghost" data-act="tab:modelos">🧩 ${L('Modelos','Templates')}</button>
+  </div></div>
+  <div class="mstats" style="grid-template-columns:repeat(auto-fill,minmax(160px,1fr))">
+    ${mstat(L('Setores cotados','Sectors quoted'), `${setoresComCotacao}/${SETORES.length}`)}
+    ${mstat(L('Aguardando resposta','Awaiting reply'), fmtN(aguardando.length), aguardando.length?'warn':'')}
+    ${mstat(L('Setores fechados','Sectors closed'), fmtN(aprovadas.length), aprovadas.length?'pos':'')}
+    ${mstat(L('Custo fechado','Closed cost'), money(totalAprovado))}
+    ${mstat(L('Custo por passageiro','Cost per passenger'), pax ? money(totalAprovado/pax) : '—')}
+    ${mstat(L('Passageiros','Passengers'), pax || '—')}
+  </div>
+  <div class="grid g3" id="cenGrid" style="margin-top:16px"></div>
+  <div class="card" style="margin-top:18px"><div class="cardhead"><h3>📊 ${L('Resumo dos custos fechados','Closed cost summary')}</h3><span class="sp"></span>
+    <button class="btn btn-primary btn-sm" id="cenCopy">📋 ${L('Copiar resumo para WhatsApp','Copy summary for WhatsApp')}</button></div>
+    <div id="cenResumo"></div></div>`;
+
+  $('#cenTrip').onchange = e=>{ CENTRAL.viagemId = e.target.value; renderCentral(); };
+  $('#cenGrid').innerHTML = SETORES.map(setor=>{
+    const list = reqs.filter(q=>(q.setor||'Outro')===setor);
+    const best = list.filter(q=>reqValue(q)>0).sort((a,b)=>reqValue(a)-reqValue(b))[0];
+    const chosen = list.find(q=>q.status==='Aprovada');
+    return `<div class="card" style="padding:16px">
+      <div class="cardhead" style="margin-bottom:10px"><h3>${SETOR_ICON[setor]} ${esc(tv(setor))}</h3><span class="sp"></span>${chosen?`<span class="pill p-green">${L('fechado','closed')}</span>`:list.length?`<span class="count">${list.length}</span>`:''}</div>
+      ${list.length ? `<div class="list">${list.map(q=>{
+        const v = reqValue(q); const isBest = best && best.id===q.id && !chosen;
+        return `<div class="li" style="align-items:flex-start;gap:8px">
+          <div class="grow" data-open="solicitacoes:${q.id}" style="cursor:pointer">
+            <div class="lt">${esc(q.fornecedor)}${isBest?' <span class="tag ok">'+L('menor valor','lowest')+'</span>':''}</div>
+            <div class="ls">${esc(q.resumo||'')}</div>
+            <div class="ls">${v?`<b class="num" style="color:var(--text)">${money(v)}</b>${pax?` · ${money(v/pax)}/pax`:''}`:L('sem valor ainda','no price yet')} · ${fmtDate(q.dataEnvio)}</div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end">
+            ${pill(q.status)}
+            <div style="display:flex;gap:4px">
+              <button class="iconbtn" data-act="copyReq" data-id="${q.id}" title="${L('Copiar mensagem','Copy message')}">📋</button>
+              <button class="iconbtn" data-act="waReq" data-id="${q.id}" title="WhatsApp">💬</button>
+              ${q.status!=='Aprovada'?`<button class="iconbtn" data-act="pickReq" data-id="${q.id}" title="${L('Escolher esta','Choose this')}">✓</button>`:''}
+            </div>
+          </div></div>`; }).join('')}</div>`
+        : `<div class="small muted" style="padding:6px 0 10px">${L('Nenhuma cotação pedida neste setor.','No quotes requested for this sector.')}</div>`}
+      <button class="btn btn-ghost btn-sm btn-block" style="margin-top:8px" data-act="askSetor" data-setor="${esc(setor)}">+ ${L('Pedir cotação','Request quote')}</button>
+    </div>`;
+  }).join('');
+
+  const linhas = aprovadas.map(q=>`${SETOR_ICON[q.setor||'Outro']} ${tv(q.setor||'Outro')}: ${q.fornecedor} — ${money(reqValue(q))}${pax?` (${money(reqValue(q)/pax)}/pax)`:''}`);
+  $('#cenResumo').innerHTML = aprovadas.length
+    ? `<div class="tablewrap"><table class="tbl resp"><thead><tr><th>${L('Setor','Sector')}</th><th>${L('Empresa','Supplier')}</th><th>${L('Valor','Amount')}</th>${pax?`<th>${L('Por passageiro','Per passenger')}</th>`:''}<th></th></tr></thead><tbody>
+      ${aprovadas.map(q=>`<tr data-open="solicitacoes:${q.id}"><td data-label="${L('Setor','Sector')}">${SETOR_ICON[q.setor||'Outro']} ${esc(tv(q.setor||'Outro'))}</td><td data-label="${L('Empresa','Supplier')}" class="strong">${esc(q.fornecedor)}</td><td data-label="${L('Valor','Amount')}"><b class="num">${money(reqValue(q))}</b></td>${pax?`<td data-label="${L('Por passageiro','Per passenger')}" class="num">${money(reqValue(q)/pax)}</td>`:''}
+        <td class="acts-td"><div class="acts"><button class="btn btn-ghost btn-sm" data-act="reqToExpense" data-id="${q.id}">💰 ${L('Lançar despesa','Add expense')}</button></div></td></tr>`).join('')}
+      <tr><td data-label="${L('Setor','Sector')}"><b>${L('Total','Total')}</b></td><td></td><td data-label="${L('Valor','Amount')}"><b class="num">${money(totalAprovado)}</b></td>${pax?`<td data-label="${L('Por passageiro','Per passenger')}" class="num"><b>${money(totalAprovado/pax)}</b></td>`:''}<td></td></tr>
+    </tbody></table></div>${pax?'':`<div class="small muted" style="margin-top:8px">${L('Informe o número de passageiros na viagem para ver o custo por pessoa.','Set the number of passengers on the trip to see the per-person cost.')}</div>`}`
+    : emptyState('📊', L('Nenhum setor fechado ainda','No sector closed yet'), L('Peça as cotações, registre os valores recebidos e marque a escolhida com o ✓.','Request quotes, log the prices received and pick the winner with ✓.'));
+  $('#cenCopy').onclick = ()=>{
+    const t = trip ? trip.nome : L('Cotações avulsas','Loose quotes');
+    const txt = [`*${L('RESUMO DE CUSTOS','COST SUMMARY')} — ${t}*`, trip && trip.dataSaida ? `${fmtDate(trip.dataSaida)} → ${fmtDate(trip.dataRetorno)}` : '', pax?`${L('Passageiros','Passengers')}: ${pax}`:'', '',
+      ...(linhas.length?linhas:[L('(nenhum setor fechado ainda)','(no sector closed yet)')]), '',
+      `*${L('Total','Total')}:* ${money(totalAprovado)}`, pax?`*${L('Por passageiro','Per passenger')}:* ${money(totalAprovado/pax)}`:'', '',
+      aguardando.length?`${L('Aguardando resposta','Awaiting reply')}: ${aguardando.map(q=>q.fornecedor).join(', ')}`:'', '', SIGN[LANG==='en'?'en':'pt']].filter(x=>x!=='').join('\n');
+    copyText(txt);
+  };
+}
+ACTIONS.askSetor = el=>{
+  const setor = el.dataset.setor;
+  const tplId = TPL_BY_SETOR[setor] || 'passeio';
+  MODEL_UI.sel = tplId; MODEL_UI.tab = 'tpl'; MODEL_UI.to = '';
+  MODEL_UI.setor = setor; MODEL_UI.viagemId = CENTRAL.viagemId;
+  const trip = getRec('viagens', CENTRAL.viagemId);
+  if(trip){
+    const v = MODEL_UI.values[tplId] = MODEL_UI.values[tplId] || {};
+    const pax = tripStats(trip).pax || trip.pax || '';
+    const set = (k, val) => { if(val && !v[k]) v[k] = val; };
+    set('grupo', trip.nome); set('pax', pax); set('cidade', trip.destino); set('destino', trip.destino);
+    set('checkin', trip.dataSaida); set('checkout', trip.dataRetorno); set('data', trip.dataSaida); set('ida', trip.dataSaida); set('volta', trip.dataRetorno);
+    set('origem', trip.localEmbarque);
+  }
+  goTab('modelos');
+};
+ACTIONS.copyReq = el=>{ const q = getRec('solicitacoes', el.dataset.id); if(q) copyText(q.mensagem || `${q.fornecedor} · ${q.resumo}`); };
+ACTIONS.waReq = el=>{
+  const q = getRec('solicitacoes', el.dataset.id); if(!q) return;
+  const f = loadDB('fornecedores').find(x=>norm(x.nome)===norm(q.fornecedor)) ||
+    PARTNER_KEYS.flatMap(k=>loadDB(k)).find(x=>norm(x.nome)===norm(q.fornecedor)) ||
+    loadDB('transportes').find(x=>norm(x.empresa)===norm(q.fornecedor));
+  const num = f ? [f.whatsapp, f.telefone].find(x=>x && !/^0800/.test(String(x).replace(/\D/g,''))) : '';
+  window.open(waLink(String(num||'').split('/')[0], q.mensagem||''), '_blank');
+};
+ACTIONS.pickReq = el=>{
+  const q = getRec('solicitacoes', el.dataset.id); if(!q) return;
+  const all = loadDB('solicitacoes');
+  all.forEach(x=>{ if(x.id===q.id){ x.status='Aprovada'; x.updatedAt=nowISO(); }
+    else if(x.viagemId===q.viagemId && (x.setor||'Outro')===(q.setor||'Outro') && x.status!=='Aprovada' && x.status!=='Recusada'){ x.status='Recusada'; x.updatedAt=nowISO(); } });
+  saveDB('solicitacoes', all);
+  logActivity('status','solicitacoes', `${q.fornecedor} → ${L('escolhida','chosen')} (${q.setor||''})`, q.id);
+  refreshAll(); showToast(L('Setor fechado com essa empresa.','Sector closed with this supplier.'));
+};
+ACTIONS.reqToExpense = el=>{
+  const q = getRec('solicitacoes', el.dataset.id); if(!q) return;
+  const cat = {'Hospedagem':'Hospedagem','Transporte rodoviário':'Transporte','Cruzeiro / barco':'Transporte','Aéreo':'Transporte','Passeios e ingressos':'Ingressos','Alimentação':'Alimentação','Guia / intérprete':'Guia/Intérprete','Seguro viagem':'Seguro'}[q.setor] || 'Outro';
+  openForm('financeiro', null, {tipo:'Despesa', categoria:cat, descricao:`${q.setor||''} — ${q.fornecedor}`, valor:reqValue(q), fornecedor:q.fornecedor, viagemId:q.viagemId||'', status:'Pendente', observacoes:q.resumo||''});
+};
+
+/* ---------------- Salvar / transferir entre celulares ---------------- */
+function openTransfer(){
+  const meta = getMeta(); const last = meta.lastBackup;
+  const size = (storageSize()/1024/1024*2).toFixed(2);
+  openModal(`💾 ${L('Salvar e transferir dados','Save & transfer data')}`, `
+    <p style="margin-top:0;color:var(--text2)">${L('Os dados ficam salvos só neste aparelho. Para usar em outro celular ou computador: <b>salve o arquivo aqui</b>, envie para você mesmo (WhatsApp, e-mail, Drive) e <b>importe no outro aparelho</b>.','Data is stored only on this device. To use it elsewhere: <b>save the file here</b>, send it to yourself (WhatsApp, email, Drive) and <b>import it on the other device</b>.')}</p>
+    <div class="backupinfo"><div class="bi">${last?'✅':'⚠️'}</div><div><div style="font-weight:650">${last?`${L('Último salvamento','Last save')}: ${fmtDateTime(last)}`:L('Você ainda não salvou os dados neste aparelho','You have not saved data on this device yet')}</div><div class="small muted">${L('Uso do armazenamento','Storage used')}: ${size} MB</div></div></div>
+    <div class="mstats" style="grid-template-columns:repeat(auto-fill,minmax(140px,1fr))">${['clientes','viagens','reservas','solicitacoes','contratos','financeiro'].map(k=>mstat(entLabel(k), fmtN(loadDB(k).length))).join('')}</div>
+    <div class="formsec" style="margin-top:18px">${L('1. Neste aparelho','1. On this device')}</div>
+    <button class="btn btn-primary btn-block" id="trExport">⬇ ${L('Salvar arquivo com todos os dados','Save file with all data')}</button>
+    <div class="formsec" style="margin-top:18px">${L('2. No outro aparelho','2. On the other device')}</div>
+    <label class="btn btn-ghost btn-block" style="margin:0">⬆ ${L('Importar arquivo salvo','Import saved file')}<input type="file" accept=".json" class="fileHidden" id="trImport"></label>
+    <div class="small muted" style="margin-top:8px">${L('Ao importar você escolhe: <b>substituir</b> tudo (deixa igual ao aparelho de origem) ou <b>mesclar</b> (só adiciona o que falta).','When importing you choose: <b>replace</b> everything (mirrors the source device) or <b>merge</b> (only adds what is missing).')}</div>
+    <div id="trPreview"></div>`, `<button class="btn btn-quiet" onclick="closeModal()">${L('Fechar','Close')}</button><button class="btn btn-ghost" data-act="tab:backup" onclick="closeModal()">${L('Abrir Backup completo','Open full backup')}</button>`);
+  $('#trExport').onclick = ()=>{
+    const dados = {}; BACKUP_KEYS.forEach(k=>dados[k] = loadDB(k));
+    const at = nowISO();
+    downloadJSON('eyeth-tour-backup-'+at.slice(0,10)+'.json', {versao:APP_VERSION, app:'eyeth-tour-painel', exportadoEm:at, dados, meta:{seq:getMeta().seq||{}}});
+    setMeta({lastBackup:at}); logActivity('backup','', L('arquivo salvo para transferência','file saved for transfer'));
+    updateBadges(); showToast(L('Arquivo salvo! Envie para o outro aparelho e importe lá.','File saved! Send it to the other device and import it there.'));
+  };
+  $('#trImport').onchange = e=>{
+    const file = e.target.files[0]; if(!file) return;
+    readJSONFile(file, payload=>{
+      if(!payload || !payload.dados){ alert(L('Arquivo inválido.','Invalid file.')); return; }
+      const keys = BACKUP_KEYS.filter(k=>Array.isArray(payload.dados[k]));
+      $('#trPreview').innerHTML = `<div class="restorebox"><div style="font-weight:650">📄 ${esc(file.name)}${payload.exportadoEm?` · ${fmtDateTime(payload.exportadoEm)}`:''}</div>
+        <div class="small" style="margin:6px 0 10px">${keys.slice(0,8).map(k=>`${esc(entLabel(k))}: <b>${payload.dados[k].length}</b>`).join(' · ')}</div>
+        <div class="toolbar" style="margin:0"><button class="btn btn-danger btn-sm" id="trReplace">${L('Substituir tudo','Replace everything')}</button><button class="btn btn-ghost btn-sm" id="trMerge">${L('Mesclar','Merge')}</button></div></div>`;
+      $('#trReplace').onclick = async ()=>{
+        if(!await confirmBox(L('Substituir os dados deste aparelho?','Replace this device data?'), L('Os dados atuais deste aparelho serão trocados pelos do arquivo.','Current data on this device will be replaced by the file data.'), L('Substituir','Replace'), true)) return;
+        keys.forEach(k=>saveDB(k, payload.dados[k]));
+        if(payload.meta && payload.meta.seq) setMeta({seq:payload.meta.seq});
+        runMigrations(); logActivity('restore','', file.name); closeModal(); refreshAll(); showToast(L('Dados atualizados neste aparelho.','Data updated on this device.'));
+      };
+      $('#trMerge').onclick = ()=>{
+        let added = 0;
+        keys.forEach(k=>{ if(k==='atividades') return; const cur = loadDB(k); const ids = new Set(cur.map(r=>r.id)); payload.dados[k].forEach(r=>{ if(!r.id || !ids.has(r.id)){ cur.push(Object.assign({}, r, {id:r.id||uid()})); added++; } }); saveDB(k, cur); });
+        runMigrations(); logActivity('import','', `${file.name} (+${added})`); closeModal(); refreshAll(); showToast(`${added} ${L('registro(s) adicionado(s).','record(s) added.')}`);
+      };
+    });
+    e.target.value = '';
+  };
+}
+ACTIONS.transfer = openTransfer;
+
+/* ============================================================
    APLICAÇÃO: login, navegação, migração, inicialização
 ============================================================ */
 const ADMIN_USER = "admin";   // troque antes de publicar
@@ -3972,6 +4185,7 @@ const TABS = [
   {k:'viagens', ic:'🧳', t:['Viagens','Trips'], s:['Viagens em grupo, passageiros e serviços','Group trips, passengers and services'], r:()=>entityPanel('viagens')},
   {k:'reservas', ic:'🎫', t:['Reservas','Bookings'], s:['Reservas de clientes, pagamentos e documentação','Client bookings, payments and documents'], r:()=>entityPanel('reservas')},
   {k:'cotacoes', ic:'🧾', t:['Cotações','Quotes'], s:['Propostas enviadas a clientes','Proposals sent to clients'], r:()=>entityPanel('cotacoes')},
+  {k:'central', ic:'🎯', t:['Central de cotações','Quote hub'], s:['Uma viagem, todos os setores: hospedagem, ônibus, barco, passeios, alimentação','One trip, every sector: lodging, coach, boat, tours, meals'], r:()=>renderCentral()},
   {k:'contratos', ic:'📄', t:['Contratos','Contracts'], s:['Central de contratos de clientes e fornecedores','Client and supplier contract hub'], r:()=>entityPanel('contratos')},
   {k:'financeiro', ic:'💰', t:['Financeiro','Finance'], s:['Receitas, despesas, comissões e resultado','Income, expenses, commissions and results'], r:()=>renderFinance()},
   {g:['Fornecedores','Suppliers']},
